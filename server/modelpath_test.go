@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -155,5 +156,69 @@ func TestParseModelPath(t *testing.T) {
 				t.Errorf("got: %q want: %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestMigrateRegistryDomain(t *testing.T) {
+	manifests := []string{
+		filepath.Join("registry.ollama.ai", "library", "mistral", "latest"),
+		filepath.Join("registry.ollama.ai", "library", "llama3", "7b"),
+		filepath.Join("ollama.com", "library", "llama3", "7b"),
+		filepath.Join("localhost:5000", "library", "llama3", "13b"),
+	}
+
+	models := t.TempDir()
+	t.Setenv("OLLAMA_MODELS", models)
+	envconfig.LoadConfig()
+
+	for _, manifest := range manifests {
+		p := filepath.Join(models, "manifests", manifest)
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+
+		f, err := os.Create(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if err := f.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := migrateRegistryDomain(); err != nil {
+		t.Fatal(err)
+	}
+
+	var actual []string
+	if err := filepath.Walk(models, func(p string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if !fi.IsDir() {
+			rel, err := filepath.Rel(models, p)
+			if err != nil {
+				return err
+			}
+
+			actual = append(actual, rel)
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	expected := []string{
+		filepath.Join("manifests", "localhost:5000", "library", "llama3", "13b"),
+		filepath.Join("manifests", DefaultRegistry, "library", "llama3", "7b"),
+		filepath.Join("manifests", DefaultRegistry, "library", "mistral", "latest"),
+		filepath.Join("manifests", "registry.ollama.ai", "library", "llama3", "7b"),
+	}
+
+	if diff := cmp.Diff(actual, expected); diff != "" {
+		t.Errorf("mismatch (-got +want)\n%s", diff)
 	}
 }

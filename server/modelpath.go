@@ -178,6 +178,9 @@ func migrateRegistryDomain() error {
 	olddomainpath := filepath.Join(manifests, "registry.ollama.ai")
 	newdomainpath := filepath.Join(manifests, DefaultRegistry)
 
+	//nolint:errcheck
+	defer PruneDirectory(olddomainpath)
+
 	return filepath.Walk(olddomainpath, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -185,7 +188,21 @@ func migrateRegistryDomain() error {
 
 		if !info.IsDir() {
 			slog.Info("migrating registry domain", "path", path)
-			newpath := filepath.Join(newdomainpath, strings.TrimPrefix(path, olddomainpath))
+
+			rel, err := filepath.Rel(olddomainpath, path)
+			if err != nil {
+				return err
+			}
+
+			newpath := filepath.Join(newdomainpath, rel)
+			if _, err := os.Stat(newpath); errors.Is(err, fs.ErrNotExist) {
+				// noop
+			} else if err != nil {
+				return err
+			} else {
+				return nil
+			}
+
 			if err := os.MkdirAll(filepath.Dir(newpath), 0o755); err != nil {
 				return err
 			}
