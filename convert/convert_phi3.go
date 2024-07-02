@@ -57,7 +57,7 @@ func (p *phi3) KV(t *Tokenizer) llm.KV {
 		// no scaling
 	case "su":
 		kv["phi3.rope.scaling.attn_factor"] = float32(max(math.Sqrt(1+math.Log(scale)/math.Log(float64(p.OriginalMaxPositionEmbeddings))), 1.0))
-	case "yarn":
+	case "yarn", "longrope":
 		kv["phi3.rope.scaling.attn_factor"] = float32(max(0.1*math.Log(scale)+1.0, 1.0))
 	default:
 		panic("unknown rope scaling type")
