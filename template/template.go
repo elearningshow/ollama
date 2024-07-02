@@ -180,13 +180,13 @@ func (t *Template) Subtree(fn func(parse.Node) bool) *template.Template {
 	}
 
 	if n := walk(t.Tree.Root); n != nil {
-		return (&template.Template{
+		return &template.Template{
 			Tree: &parse.Tree{
 				Root: &parse.ListNode{
 					Nodes: []parse.Node{n},
 				},
 			},
-		}).Funcs(funcs)
+		}
 	}
 
 	return nil
