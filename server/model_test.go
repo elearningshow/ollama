@@ -141,18 +141,18 @@ func TestParseToolCalls(t *testing.T) {
 		{
 			name: "mistral",
 			tmpl: must(template.Parse(`{{- if .Messages }}
-{{- range .Messages }}
+{{- range $index, $_ := .Messages }}
 {{- if eq .Role "user" }}
-{{- if and (eq (index $.Messages (sub (len $.Messages) 1)) .) $.Tools }}[AVAILABLE_TOOLS] {{ toJson $.Tools }}[/AVAILABLE_TOOLS]
-{{- end }}[INST] {{ if and (eq (index $.Messages (sub (len $.Messages) 1)) .) $.System }}{{ $.System }}{{ printf "\n\n" }}
+{{- if and (eq (len (slice $.Messages $index)) 1) $.Tools }}[AVAILABLE_TOOLS] {{ json $.Tools }}[/AVAILABLE_TOOLS]
+{{- end }}[INST] {{ if and (eq (len (slice $.Messages $index)) 1) $.System }}{{ $.System }}{{ printf "\n\n" }}
 {{- end }}{{ .Content }}[/INST]
 {{- else if eq .Role "assistant" }}
 {{- if .Content }} {{ .Content }}</s>
 {{- else if .ToolCalls }} [TOOL_CALLS] [
-{{- range .ToolCalls }}{{ "{" }}"name": "{{ .Function.Name }}", "arguments": {{ toJson .Function.Arguments }}{{ "}" }}
+{{- range .ToolCalls }}{{ "{" }}"name": "{{ .Function.Name }}", "arguments": {{ json .Function.Arguments }}{{ "}" }}
 {{- end }}]</s>
 {{- end }}
-{{- else if eq .Role "tool" }}[TOOL_RESULTS] {{ toJson .Content }}[/TOOL_RESULTS]
+{{- else if eq .Role "tool" }}[TOOL_RESULTS] {{ json .Content }}[/TOOL_RESULTS]
 {{- end }}
 {{- end }}
 {{- else }}[INST] {{ if .System }}{{ .System }} {{ end }}{{ .Prompt }} [/INST]
@@ -163,18 +163,18 @@ func TestParseToolCalls(t *testing.T) {
 		{
 			name: "no toolcalls",
 			tmpl: must(template.Parse(`{{- if .Messages }}
-{{- range .Messages }}
+{{- range $index, $_ := .Messages }}
 {{- if eq .Role "user" }}
-{{- if and (eq (index $.Messages (sub (len $.Messages) 1)) .) $.Tools }}[AVAILABLE_TOOLS] {{ toJson $.Tools }}[/AVAILABLE_TOOLS]
-{{- end }}[INST] {{ if and (eq (index $.Messages (sub (len $.Messages) 1)) .) $.System }}{{ $.System }}{{ printf "\n\n" }}
+{{- if and (eq (len (slice $.Messages $index)) 1) $.Tools }}[AVAILABLE_TOOLS] {{ json $.Tools }}[/AVAILABLE_TOOLS]
+{{- end }}[INST] {{ if and (eq (len (slice $.Messages $index)) 1) $.System }}{{ $.System }}{{ printf "\n\n" }}
 {{- end }}{{ .Content }}[/INST]
 {{- else if eq .Role "assistant" }}
 {{- if .Content }} {{ .Content }}</s>
 {{- else if .ToolCalls }} [TOOL_CALLS] [
-{{- range .ToolCalls }}{{ "{" }}"name": "{{ .Function.Name }}", "arguments": {{ toJson .Function.Arguments }}{{ "}" }}
+{{- range .ToolCalls }}{{ "{" }}"name": "{{ .Function.Name }}", "arguments": {{ json .Function.Arguments }}{{ "}" }}
 {{- end }}]</s>
 {{- end }}
-{{- else if eq .Role "tool" }}[TOOL_RESULTS] {{ toJson .Content }}[/TOOL_RESULTS]
+{{- else if eq .Role "tool" }}[TOOL_RESULTS] {{ json .Content }}[/TOOL_RESULTS]
 {{- end }}
 {{- end }}
 {{- else }}[INST] {{ if .System }}{{ .System }} {{ end }}{{ .Prompt }} [/INST]
@@ -229,7 +229,7 @@ Action: ` + "```" + `json
 {{- range .ToolCalls }}
     {
         "tool_name": "{{ .Function.Name }}",
-        "parameters": {{ toJson .Function.Arguments }}
+        "parameters": {{ json .Function.Arguments }}
     }
 {{- end }}
 ]
@@ -285,7 +285,7 @@ If you decide to call functions:
 
 Available functions as JSON spec:
 {{- if .Tools }}
-{{ toPrettyJson .Tools }}
+{{ json .Tools }}
 {{- end }}
 Today is {{ now }}.<|eot_id|>
 {{- end }}
@@ -295,7 +295,7 @@ Today is {{ now }}.<|eot_id|>
 {{- end }}<|end_header_id|>
 {{- if .Content }}{{ .Content }}
 {{- else if .ToolCalls }} functools[
-{{- range .ToolCalls }}{{ "{" }}"name": "{{ .Function.Name }}", "arguments": {{ toJson .Function.Arguments }}{{ "}" }}
+{{- range .ToolCalls }}{{ "{" }}"name": "{{ .Function.Name }}", "arguments": {{ json .Function.Arguments }}{{ "}" }}
 {{- end }}]
 {{- end }}<|eot_id|>
 {{- end }}<|start_header_id|>assistant<|end_header_id|>`)),

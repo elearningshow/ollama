@@ -13,6 +13,7 @@ import (
 	"sync"
 	"text/template"
 	"text/template/parse"
+	"time"
 
 	"github.com/agnivade/levenshtein"
 	"github.com/ollama/ollama/api"
@@ -102,8 +103,18 @@ var response = parse.ActionNode{
 	},
 }
 
+var funcs = template.FuncMap{
+	"json": func(v any) string {
+		b, _ := json.Marshal(v)
+		return string(b)
+	},
+	"now": func() string {
+		return time.Now().Format("2006-01-02 15:04:05")
+	},
+}
+
 func Parse(s string) (*Template, error) {
-	tmpl := template.New("").Option("missingkey=zero")
+	tmpl := template.New("").Option("missingkey=zero").Funcs(funcs)
 
 	tmpl, err := tmpl.Parse(s)
 	if err != nil {
@@ -180,13 +191,13 @@ func (t *Template) Subtree(fn func(parse.Node) bool) *template.Template {
 	}
 
 	if n := walk(t.Tree.Root); n != nil {
-		return &template.Template{
+		return (&template.Template{
 			Tree: &parse.Tree{
 				Root: &parse.ListNode{
 					Nodes: []parse.Node{n},
 				},
 			},
-		}
+		}).Funcs(funcs)
 	}
 
 	return nil
