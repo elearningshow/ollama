@@ -665,7 +665,7 @@ type CompletionRequest struct {
 	Prompt  string
 	Format  string
 	Images  []ImageData
-	Options api.Options
+	Options *api.Options
 }
 
 type CompletionResponse struct {

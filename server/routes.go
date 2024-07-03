@@ -73,23 +73,25 @@ func modelOptions(model *Model, requestOpts map[string]interface{}) (api.Options
 	return opts, nil
 }
 
-func (s *Server) scheduleRunner(ctx context.Context, name string, caps []Capability, requestOpts map[string]any, keepAlive *api.Duration) (*runnerRef, error) {
+// scheduleRunner schedules a runner after validating inputs such as capabilities and model options.
+// It returns the allocated runner, model instance, and consolidated options if successful and error otherwise.
+func (s *Server) scheduleRunner(ctx context.Context, name string, caps []Capability, requestOpts map[string]any, keepAlive *api.Duration) (llm.LlamaServer, *Model, *api.Options, error) {
 	if name == "" {
-		return nil, fmt.Errorf("model %w", errRequired)
+		return nil, nil, nil, fmt.Errorf("model %w", errRequired)
 	}
 
 	model, err := GetModel(name)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	if err := model.CheckCapabilities(caps...); err != nil {
-		return nil, fmt.Errorf("%s %w", name, err)
+		return nil, nil, nil, fmt.Errorf("%s %w", name, err)
 	}
 
 	opts, err := modelOptions(model, requestOpts)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	sessionDuration := getDefaultSessionDuration()
@@ -102,10 +104,10 @@ func (s *Server) scheduleRunner(ctx context.Context, name string, caps []Capabil
 	select {
 	case runner = <-runnerCh:
 	case err = <-errCh:
-		return nil, err
+		return nil, nil, nil, err
 	}
 
-	return runner, nil
+	return runner.llama, model, &opts, nil
 }
 
 func (s *Server) GenerateHandler(c *gin.Context) {
@@ -127,7 +129,7 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 	}
 
 	caps := []Capability{CapabilityCompletion}
-	r, err := s.scheduleRunner(c.Request.Context(), req.Model, caps, req.Options, req.KeepAlive)
+	r, m, opts, err := s.scheduleRunner(c.Request.Context(), req.Model, caps, req.Options, req.KeepAlive)
 	if errors.Is(err, errCapabilityCompletion) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%q does not support generate", req.Model)})
 		return
@@ -156,8 +158,8 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 		var msgs []api.Message
 		if req.System != "" {
 			msgs = append(msgs, api.Message{Role: "system", Content: req.System})
-		} else if r.model.System != "" {
-			msgs = append(msgs, api.Message{Role: "system", Content: r.model.System})
+		} else if m.System != "" {
+			msgs = append(msgs, api.Message{Role: "system", Content: m.System})
 		}
 
 		for _, i := range images {
@@ -166,7 +168,7 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 
 		msgs = append(msgs, api.Message{Role: "user", Content: req.Prompt})
 
-		tmpl := r.model.Template
+		tmpl := m.Template
 		if req.Template != "" {
 			tmpl, err = template.Parse(req.Template)
 			if err != nil {
@@ -177,7 +179,7 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 
 		var b bytes.Buffer
 		if req.Context != nil {
-			s, err := r.llama.Detokenize(c.Request.Context(), req.Context)
+			s, err := r.Detokenize(c.Request.Context(), req.Context)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
@@ -199,11 +201,11 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 	ch := make(chan any)
 	go func() {
 		defer close(ch)
-		if err := r.llama.Completion(c.Request.Context(), llm.CompletionRequest{
+		if err := r.Completion(c.Request.Context(), llm.CompletionRequest{
 			Prompt:  prompt,
 			Images:  images,
 			Format:  req.Format,
-			Options: *r.Options,
+			Options: opts,
 		}, func(r llm.CompletionResponse) {
 			ch <- api.GenerateResponse{
 				Model:      req.Model,
@@ -289,7 +291,7 @@ func (s *Server) EmbeddingsHandler(c *gin.Context) {
 		return
 	}
 
-	r, err := s.scheduleRunner(c.Request.Context(), req.Model, []Capability{}, req.Options, req.KeepAlive)
+	r, _, _, err := s.scheduleRunner(c.Request.Context(), req.Model, []Capability{}, req.Options, req.KeepAlive)
 	if err != nil {
 		handleScheduleError(c, req.Model, err)
 		return
@@ -301,7 +303,7 @@ func (s *Server) EmbeddingsHandler(c *gin.Context) {
 		return
 	}
 
-	embedding, err := r.llama.Embedding(c.Request.Context(), req.Prompt)
+	embedding, err := r.Embedding(c.Request.Context(), req.Prompt)
 	if err != nil {
 		slog.Info(fmt.Sprintf("embedding generation failed: %v", err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate embedding"})
@@ -1165,7 +1167,7 @@ func (s *Server) ChatHandler(c *gin.Context) {
 	}
 
 	caps := []Capability{CapabilityCompletion}
-	r, err := s.scheduleRunner(c.Request.Context(), req.Model, caps, req.Options, req.KeepAlive)
+	r, m, opts, err := s.scheduleRunner(c.Request.Context(), req.Model, caps, req.Options, req.KeepAlive)
 	if errors.Is(err, errCapabilityCompletion) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%q does not support chat", req.Model)})
 		return
@@ -1185,7 +1187,7 @@ func (s *Server) ChatHandler(c *gin.Context) {
 		return
 	}
 
-	prompt, images, err := chatPrompt(c.Request.Context(), r.model, r.llama.Tokenize, r.Options, req.Messages)
+	prompt, images, err := chatPrompt(c.Request.Context(), m, r.Tokenize, opts, req.Messages)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -1196,11 +1198,11 @@ func (s *Server) ChatHandler(c *gin.Context) {
 	ch := make(chan any)
 	go func() {
 		defer close(ch)
-		if err := r.llama.Completion(c.Request.Context(), llm.CompletionRequest{
+		if err := r.Completion(c.Request.Context(), llm.CompletionRequest{
 			Prompt:  prompt,
 			Images:  images,
 			Format:  req.Format,
-			Options: *r.Options,
+			Options: opts,
 		}, func(r llm.CompletionResponse) {
 			ch <- api.ChatResponse{
 				Model:      req.Model,
