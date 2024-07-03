@@ -295,9 +295,9 @@ func detectContentType(r io.Reader) (string, error) {
 	return "unknown", nil
 }
 
-// tryParseToolCalls attempts to parse a JSON string into a slice of ToolCalls.
+// parseToolCalls attempts to parse a JSON string into a slice of ToolCalls.
 // mxyng: this only really works if the input contains tool calls in some JSON format
-func (m *Model) tryParseToolCalls(s string) ([]api.ToolCall, bool) {
+func (m *Model) parseToolCalls(s string) ([]api.ToolCall, bool) {
 	// create a subtree from the node that ranges over .ToolCalls
 	tmpl := m.Template.Subtree(func(n parse.Node) bool {
 		if t, ok := n.(*parse.RangeNode); ok {
@@ -385,5 +385,9 @@ func (m *Model) tryParseToolCalls(s string) ([]api.ToolCall, bool) {
 		toolCalls = append(toolCalls, call)
 	}
 
-	return toolCalls, true
+	if len(toolCalls) > 0 {
+		return toolCalls, true
+	}
+
+	return nil, false
 }
