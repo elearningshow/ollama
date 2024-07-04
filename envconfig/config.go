@@ -244,10 +244,16 @@ var (
 	MaxQueue    = Int("OLLAMA_MAX_QUEUE", 512)
 )
 
-var (
-	// Set via OLLAMA_MAX_VRAM in the environment
-	MaxVRAM uint64
-)
+// MaxVRAM sets a maximum VRAM override in bytes. MaxVRAM can be configured via the OLLAMA_MAX_VRAM environment variable.
+func MaxVRAM() uint64 {
+	if s := getenv("OLLAMA_MAX_VRAM"); s != "" {
+		if n, err := strconv.ParseUint(s, 10, 64); err == nil {
+			return n
+		}
+	}
+
+	return 0
+}
 
 type EnvVar struct {
 	Name        string
@@ -296,20 +302,4 @@ func Values() map[string]string {
 // getenv returns an environment variable stripped of leading and trailing quotes or spaces
 func getenv(key string) string {
 	return strings.Trim(os.Getenv(key), "\"' ")
-}
-
-func init() {
-	LoadConfig()
-}
-
-func LoadConfig() {
-	userLimit := getenv("OLLAMA_MAX_VRAM")
-	if userLimit != "" {
-		avail, err := strconv.ParseUint(userLimit, 10, 64)
-		if err != nil {
-			slog.Error("invalid setting, ignoring", "OLLAMA_MAX_VRAM", userLimit, "error", err)
-		} else {
-			MaxVRAM = avail
-		}
-	}
 }
